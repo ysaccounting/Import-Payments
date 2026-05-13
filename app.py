@@ -70,7 +70,7 @@ with col1:
 with col2:
     network = st.selectbox("Network", [
         "", "Gametime", "GoTickets", "Mercury", "SeatGeek", "StubHub",
-        "Ticket Evolution", "TicketNetwork", "TicketsNow", "TickPick", "Vivid"
+        "Ticket Evolution", "TicketNetwork", "TicketsNow", "TickPick", "Vivid Seats"
     ], index=0, format_func=lambda x: "Select..." if x == "" else x,
     key=f"network_{rc}")
 
