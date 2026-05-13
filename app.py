@@ -4,7 +4,7 @@ import io
 from datetime import date
 from parsers import parse_file
 
-st.set_page_config(page_title="CSV Import to TicketVault", page_icon="🎟️", layout="centered")
+st.set_page_config(page_title="CSV Import to TicketVault", layout="centered")
 
 st.markdown("""
 <style>
