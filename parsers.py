@@ -309,7 +309,7 @@ def parse_mercury(file) -> pd.DataFrame:
 # ── Router ────────────────────────────────────────────────────────────────────
 def parse_file(file, network: str, **kwargs) -> pd.DataFrame:
     parsers = {
-        "Vivid":            parse_vivid,
+        "Vivid Seats":      parse_vivid_seats,
         "Gametime":         parse_gametime,
         "GoTickets":        parse_gotickets,
         "SeatGeek":         parse_seatgeek,
