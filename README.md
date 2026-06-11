@@ -1,50 +1,36 @@
-# Internal Tools
+# CSV Import to TicketVault
 
-A multi-page Streamlit app for internal operations tooling.
+Remittance file converter — transforms network payout files into TicketVault-ready CSVs.
 
-## Current tools
-- **Remittance Converter** — converts network payout files into TicketVault-ready CSVs
+## Supported networks
+Gametime, GoTickets, Mercury, SeatGeek, StubHub, Ticket Evolution, TicketNetwork, TicketsNow, TicketsNow (CAD), TickPick, Vivid Seats, Vivid Seats (CAD)
 
-## Supported networks (Remittance Converter)
-Gametime, GoTickets, SeatGeek, StubHub, Ticket Evolution, TicketsNow, TickPick, Vivid Seats
-*(Mercury, TicketNetwork — coming soon)*
+## Output columns
+`order#`, `amount`, `remittancedate`, `chargebackreason`
 
 ## Project structure
 ```
-app.py                        ← Landing page (home)
-pages/
-  1_Remittance_Converter.py   ← Remittance converter tool
-parsers.py                    ← All network file parsers
-keep_alive.py                 ← Prevents Streamlit from sleeping
-requirements.txt
+app.py            ← Main app
+parsers.py        ← All network file parsers
+requirements.txt  ← Dependencies
 ```
 
 ## Setup
 
 ### 1. Clone & install
 ```bash
-git clone https://github.com/YOUR_USERNAME/internal-tools.git
-cd internal-tools
+git clone https://github.com/YOUR_USERNAME/csv-import-to-tv.git
+cd csv-import-to-tv
 pip install -r requirements.txt
 ```
 
 ### 2. Run locally
 ```bash
-streamlit run app.py
+python -m streamlit run app.py
 ```
 
-### 3. Deploy to Streamlit Cloud
-1. Push this repo to GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Connect your GitHub repo → set **Main file** to `app.py`
-4. Deploy
-
-### 4. Adding a new tool
-1. Create `pages/N_Tool_Name.py`
-2. Add an entry to the `tools` list in `app.py`
-
-## Keep-alive
-```bash
-export STREAMLIT_URL=https://your-app.streamlit.app
-python keep_alive.py
-```
+### 3. Deploy to Railway
+1. Push repo to GitHub
+2. Create new project on Railway
+3. Connect your GitHub repo
+4. Set start command to: `python -m streamlit run app.py --server.port $PORT --server.address 0.0.0.0`

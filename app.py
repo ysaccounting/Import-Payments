@@ -53,6 +53,10 @@ st.markdown('<div class="title"><strong>CSV Import to TicketVault</strong></div>
 # ── Reset handler ─────────────────────────────────────────────────────────────
 def reset():
     st.session_state["reset_counter"] = st.session_state.get("reset_counter", 0) + 1
+    # Clear cached output
+    for key in ["csv_out", "csv_filename"]:
+        if key in st.session_state:
+            del st.session_state[key]
 
 if "reset_counter" not in st.session_state:
     st.session_state["reset_counter"] = 0
@@ -170,6 +174,12 @@ if files and company and network and remit_date and te_ready:
         df[df["amount"] <  0]
     ], ignore_index=True)
 
+    # ── Cache CSV in session state so download is always available ────────────
+    short_date = remit_date.strftime("%m-%d-%y")
+    filename   = f"{company}_{network.replace(' ', '')}_{short_date}.csv"
+    st.session_state["csv_out"]      = df.to_csv(index=False).encode("utf-8")
+    st.session_state["csv_filename"] = filename
+
     # ── Stats ─────────────────────────────────────────────────────────────────
     gross          = df[df["amount"] > 0]["amount"].sum()
     net            = df["amount"].sum()
@@ -189,15 +199,12 @@ if files and company and network and remit_date and te_ready:
     st.markdown("#### Preview — first 8 rows")
     st.dataframe(df.head(8), use_container_width=True, hide_index=True)
 
-    # ── Download ──────────────────────────────────────────────────────────────
-    csv_out    = df.to_csv(index=False)
-    short_date = remit_date.strftime("%m-%d-%y")
-    filename   = f"{company}_{network.replace(' ', '')}_{short_date}.csv"
-
+# ── Download button — always shown if CSV is cached ──────────────────────────
+if "csv_out" in st.session_state:
     st.download_button(
         label="Download CSV",
-        data=csv_out,
-        file_name=filename,
+        data=st.session_state["csv_out"],
+        file_name=st.session_state["csv_filename"],
         mime="text/csv",
         type="primary",
         use_container_width=False,
