@@ -293,6 +293,7 @@
       <div class="drop-text" id="drop-text"><strong>Click to upload</strong> or drag &amp; drop</div>
       <div class="drop-sub" id="drop-sub">.csv and .xlsx files</div>
     </div>
+    <div id="file-list"></div>
     <div class="hint" id="multi-hint"></div>
 
     <div class="status" id="status"></div>
@@ -378,19 +379,40 @@
     processBtn.disabled = !(companyEl.value && net && remitEl.value && selectedFiles.length > 0 && teOk);
   }
 
-  function setFiles(files) {
-    selectedFiles = Array.from(files);
-    if (selectedFiles.length > 0) {
-      dropZone.classList.add('has-file');
-      dropIcon.textContent = '✓';
-      dropText.innerHTML = `<strong>${selectedFiles.length === 1 ? selectedFiles[0].name : selectedFiles.length + ' files selected'}</strong>`;
-      dropSub.textContent = selectedFiles.length + ' file(s) ready';
-    } else {
+  function addFiles(newFiles) {
+    Array.from(newFiles).forEach(f => {
+      if (!selectedFiles.find(x => x.name === f.name && x.size === f.size))
+        selectedFiles.push(f);
+    });
+    renderFileList();
+    checkReady();
+  }
+
+  function renderFileList() {
+    const list = document.getElementById('file-list');
+    list.innerHTML = '';
+    if (selectedFiles.length === 0) {
       dropZone.classList.remove('has-file');
       dropIcon.textContent = '↑';
       dropText.innerHTML = '<strong>Click to upload</strong> or drag &amp; drop';
       dropSub.textContent = '.csv and .xlsx files';
+      return;
     }
+    dropZone.classList.add('has-file');
+    dropIcon.textContent = '✓';
+    dropText.innerHTML = `<strong>${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected</strong>`;
+    dropSub.textContent = 'Click or drop to add more';
+    selectedFiles.forEach((f, i) => {
+      const pill = document.createElement('div');
+      pill.style.cssText = 'display:flex;align-items:center;gap:8px;background:#f0f0ee;border-radius:6px;padding:6px 10px;font-size:12px;margin-top:6px;';
+      pill.innerHTML = `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</span><button onclick="removeFile(${i})" style="background:none;border:none;cursor:pointer;color:#888;font-size:15px;padding:0 2px;line-height:1;">&times;</button>`;
+      list.appendChild(pill);
+    });
+  }
+
+  function removeFile(idx) {
+    selectedFiles.splice(idx, 1);
+    renderFileList();
     checkReady();
   }
 
@@ -410,7 +432,8 @@
     teEnd.value = '';
     teDates.style.display = 'none';
     multiHint.textContent = '';
-    setFiles([]);
+    selectedFiles = [];
+    renderFileList();
     fileInput.value = '';
     statusEl.style.display = 'none';
     resultsDiv.style.display = 'none';
@@ -426,13 +449,13 @@
   teStart.addEventListener('change', checkReady);
   teEnd.addEventListener('change', checkReady);
 
-  fileInput.addEventListener('change', e => setFiles(e.target.files));
+  fileInput.addEventListener('change', e => { addFiles(e.target.files); fileInput.value = ''; });
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop', e => {
     e.preventDefault();
     dropZone.classList.remove('drag-over');
-    setFiles(e.dataTransfer.files);
+    addFiles(e.dataTransfer.files);
   });
 
   document.getElementById('clear-btn').addEventListener('click', reset);

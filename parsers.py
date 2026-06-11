@@ -229,20 +229,24 @@ def parse_ticket_evolution(file, date_start=None, date_end=None) -> pd.DataFrame
 def parse_ticketnetwork(file) -> pd.DataFrame:
     raw = _read(file)
     content = raw.decode("utf-8", errors="replace")
+    rows_out = []
+
+    import csv as _csv
+
     lines = content.splitlines()
     if not lines:
         return None
-    headers = [c.strip().upper() for c in lines[0].split(",")]
-    rows_out = []
+
+    reader = _csv.reader(lines)
+    headers = [c.strip().upper() for c in next(reader)]
 
     # ── Details file (has TOTAL column) ──────────────────────────────────────
     if "TOTAL" in headers:
         order_col = headers.index("ORDER ID")
         total_col = headers.index("TOTAL")
-        for line in lines[1:]:
-            if not line.strip():
+        for cols in reader:
+            if not cols:
                 continue
-            cols  = line.split(",")
             order = (cols[order_col] if order_col < len(cols) else "").strip()
             amt   = _clean_amount(cols[total_col] if total_col < len(cols) else "")
             if not order:
@@ -254,12 +258,9 @@ def parse_ticketnetwork(file) -> pd.DataFrame:
         order_col  = headers.index("ORDER ID")
         amt_col    = headers.index("ADJUSTMENT AMOUNT")
         reason_col = headers.index("ADJUSTMENT CATEGORY") if "ADJUSTMENT CATEGORY" in headers else -1
-        for line in lines[1:]:
-            if not line.strip():
+        for cols in reader:
+            if not cols:
                 continue
-            # Use csv reader to handle quoted fields
-            import csv, io as _io
-            cols   = next(csv.reader(_io.StringIO(line)))
             order  = (cols[order_col] if order_col < len(cols) else "").strip()
             amt    = -abs(_clean_amount(cols[amt_col] if amt_col < len(cols) else ""))
             reason = (cols[reason_col] if reason_col != -1 and reason_col < len(cols) else "").strip()
