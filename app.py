@@ -1,214 +1,134 @@
-import streamlit as st
-import pandas as pd
 import io
-from datetime import date
+import os
+import time
+import uuid
+import shutil
+import tempfile
+from datetime import datetime
+
+import pandas as pd
+from flask import Flask, request, jsonify, send_file, send_from_directory, abort
 from parsers import parse_file
 
-st.set_page_config(page_title="CSV Import to TicketVault", layout="centered")
+app = Flask(__name__, static_folder=None)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-st.markdown("""
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
-  html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
-  .eyebrow {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.12em;
-    color: #888780;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-  }
-  .title { font-size: 28px; font-weight: 300; letter-spacing: -0.02em; margin-bottom: 24px; }
-  .title span { font-weight: 500; }
-  .stat-box {
-    background: #f5f4f0;
-    border-radius: 10px;
-    padding: 14px 16px;
-    text-align: center;
-  }
-  .stat-label {
-    font-size: 11px;
-    color: #888780;
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-bottom: 4px;
-  }
-  .stat-val { font-size: 22px; font-weight: 500; color: #1a1a18; }
-  button[kind="secondary"] {
-    background-color: #e0e0e0 !important;
-    color: #222 !important;
-    border: 1px solid #bbb !important;
-  }
-  button[kind="secondary"]:hover {
-    background-color: #c8c8c8 !important;
-    border: 1px solid #999 !important;
-  }
-</style>
-""", unsafe_allow_html=True)
+# Output CSVs stored on shared filesystem so any worker can serve them
+STORE_DIR = os.path.join(tempfile.gettempdir(), "tv_store")
+os.makedirs(STORE_DIR, exist_ok=True)
 
-st.markdown('<div class="eyebrow">Remittance converter</div>', unsafe_allow_html=True)
-st.markdown('<div class="title"><strong>CSV Import to TicketVault</strong></div>', unsafe_allow_html=True)
 
-# ── Reset handler ─────────────────────────────────────────────────────────────
-def reset():
-    st.session_state["reset_counter"] = st.session_state.get("reset_counter", 0) + 1
-    # Clear cached output
-    for key in ["csv_out", "csv_filename"]:
-        if key in st.session_state:
-            del st.session_state[key]
-
-if "reset_counter" not in st.session_state:
-    st.session_state["reset_counter"] = 0
-
-rc = st.session_state["reset_counter"]
-
-# ── Inputs ────────────────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    company = st.selectbox("Company", ["", "YS", "YS2", "TV"], index=0,
-                           format_func=lambda x: "Select..." if x == "" else x,
-                           key=f"company_{rc}")
-
-with col2:
-    network = st.selectbox("Network", [
-        "", "Gametime", "GoTickets", "Mercury", "SeatGeek", "StubHub",
-        "Ticket Evolution", "TicketNetwork", "TicketsNow", "TicketsNow (CAD)", "TickPick", "Vivid Seats", "Vivid Seats (CAD)"
-    ], index=0, format_func=lambda x: "Select..." if x == "" else x,
-    key=f"network_{rc}")
-
-with col3:
-    remit_date = st.date_input("Remittance date", value=None, format="MM/DD/YYYY", key=f"remit_date_{rc}")
-
-# ── Ticket Evolution: date range filter ───────────────────────────────────────
-date_start = None
-date_end   = None
-if network == "Ticket Evolution":
-    st.markdown("**Transaction date range** — only transactions within this range will be included.")
-    dc1, dc2 = st.columns(2)
-    with dc1:
-        date_start = st.date_input("Start date", value=None, format="MM/DD/YYYY", key=f"te_start_{rc}")
-    with dc2:
-        date_end = st.date_input("End date", value=None, format="MM/DD/YYYY", key=f"te_end_{rc}")
-
-# ── File uploader ─────────────────────────────────────────────────────────────
-multi = network in ("StubHub", "TicketsNow", "TicketsNow (CAD)", "TicketNetwork", "Mercury")
-
-uploaded_files = st.file_uploader(
-    "Upload remittance file",
-    type=["csv", "xlsx", "xls"],
-    accept_multiple_files=multi,
-    label_visibility="collapsed",
-    help="Drop your remittance file(s) here (.csv or .xlsx)",
-    key=f"uploader_{rc}"
-)
-
-if multi:
-    if network == "StubHub":
-        st.markdown("*StubHub: drop multiple files and they'll be combined automatically.*")
-    elif network in ("TicketsNow", "TicketsNow (CAD)"):
-        st.markdown("*TicketsNow: drop multiple files and they'll be combined automatically.*")
-    elif network == "TicketNetwork":
-        st.markdown("*TicketNetwork: drop the Details file and the Adjustments file together.*")
-    elif network == "Mercury":
-        st.markdown("*Mercury: drop the Details file and the Adjustments file together.*")
-else:
-    st.markdown("*Drag & drop or click above to upload your remittance file (.csv or .xlsx)*")
-
-# ── Clear / Reset button ──────────────────────────────────────────────────────
-st.markdown("")
-if st.button("Clear / Reset", key=f"reset_{rc}"):
-    reset()
-    st.rerun()
-
-# Normalise to list
-if isinstance(uploaded_files, list):
-    files = uploaded_files
-else:
-    files = [uploaded_files] if uploaded_files else []
-
-# ── Extra validation for Ticket Evolution ─────────────────────────────────────
-te_ready = True
-if network == "Ticket Evolution" and (not date_start or not date_end):
-    te_ready = False
-    if files:
-        st.warning("Please select a Start date and End date for Ticket Evolution.")
-
-# ── Validation & Parsing ──────────────────────────────────────────────────────
-if files and company and network and remit_date and te_ready:
-    with st.spinner(f"Parsing {len(files)} file(s)..."):
+def _cleanup_old(max_age_seconds=12 * 3600):
+    now = time.time()
+    for name in os.listdir(STORE_DIR):
+        path = os.path.join(STORE_DIR, name)
         try:
-            frames = []
-            for f in files:
-                kwargs = {}
-                if network == "Ticket Evolution":
-                    kwargs["date_start"] = date_start
-                    kwargs["date_end"]   = date_end
-                result = parse_file(f, network, **kwargs)
-                if result is not None and not result.empty:
-                    frames.append(result)
-            df = pd.concat(frames, ignore_index=True) if frames else None
-        except Exception as e:
-            st.error(f"Could not parse file: {e}")
-            st.stop()
+            if os.path.isdir(path) and now - os.path.getmtime(path) > max_age_seconds:
+                shutil.rmtree(path, ignore_errors=True)
+        except OSError:
+            pass
+
+
+@app.route("/")
+def index():
+    return send_from_directory(BASE_DIR, "index.html")
+
+
+@app.route("/process", methods=["POST"])
+def process():
+    # ── Read form fields ──────────────────────────────────────────────────────
+    company    = request.form.get("company", "").strip()
+    network    = request.form.get("network", "").strip()
+    remit_date = request.form.get("remit_date", "").strip()
+    date_start = request.form.get("date_start", "").strip() or None
+    date_end   = request.form.get("date_end", "").strip()   or None
+
+    if not company or not network or not remit_date:
+        return jsonify({"error": "Company, Network, and Remittance Date are required."}), 400
+
+    files = request.files.getlist("files")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"error": "Please upload at least one remittance file."}), 400
+
+    # ── Parse date fields ─────────────────────────────────────────────────────
+    try:
+        rd = datetime.strptime(remit_date, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": f"Invalid remittance date: {remit_date}"}), 400
+
+    ds = datetime.strptime(date_start, "%Y-%m-%d").date() if date_start else None
+    de = datetime.strptime(date_end,   "%Y-%m-%d").date() if date_end   else None
+
+    # ── Parse files ───────────────────────────────────────────────────────────
+    try:
+        frames = []
+        for f in files:
+            if f.filename == "":
+                continue
+            kwargs = {}
+            if network == "Ticket Evolution":
+                kwargs["date_start"] = ds
+                kwargs["date_end"]   = de
+            result = parse_file(f, network, **kwargs)
+            if result is not None and not result.empty:
+                frames.append(result)
+        df = pd.concat(frames, ignore_index=True) if frames else None
+    except Exception as e:
+        return jsonify({"error": f"Could not parse file: {e}"}), 500
 
     if df is None or df.empty:
-        if network == "Ticket Evolution" and (date_start or date_end):
-            st.error("No transactions found in the selected date range. Check that the file contains data for those dates.")
-        else:
-            st.error("Could not parse file — check that the file matches the selected network.")
-        st.stop()
+        if network == "Ticket Evolution" and (ds or de):
+            return jsonify({"error": "No transactions found in the selected date range. Check that the file contains data for those dates."}), 400
+        return jsonify({"error": "Could not parse file — check that the file matches the selected network."}), 400
 
-    if len(files) > 1:
-        st.info(f"Combined {len(files)} files → {len(df):,} rows total.")
-
-    # Add remittance date column, format as M/D/YYYY
-    date_str = f"{remit_date.month}/{remit_date.day}/{remit_date.year}"
+    # ── Build output CSV ──────────────────────────────────────────────────────
+    date_str = f"{rd.month}/{rd.day}/{rd.year}"
     df["remittancedate"] = date_str
-
-    # Reorder columns and put chargebacks at the bottom
     df = df[["order#", "amount", "remittancedate", "chargebackreason"]]
-    df = pd.concat([
-        df[df["amount"] >= 0],
-        df[df["amount"] <  0]
-    ], ignore_index=True)
-
-    # ── Cache CSV in session state so download is always available ────────────
-    short_date = remit_date.strftime("%m-%d-%y")
-    filename   = f"{company}_{network.replace(' ', '')}_{short_date}.csv"
-    st.session_state["csv_out"]      = df.to_csv(index=False).encode("utf-8")
-    st.session_state["csv_filename"] = filename
+    df = pd.concat([df[df["amount"] >= 0], df[df["amount"] < 0]], ignore_index=True)
 
     # ── Stats ─────────────────────────────────────────────────────────────────
-    gross          = df[df["amount"] > 0]["amount"].sum()
-    net            = df["amount"].sum()
-    chargeback_amt = df[df["amount"] < 0]["amount"].sum()
+    gross          = float(df[df["amount"] > 0]["amount"].sum())
+    net            = float(df["amount"].sum())
+    chargeback_amt = float(df[df["amount"] < 0]["amount"].sum())
+    total_rows     = len(df)
 
-    st.markdown("---")
-    s1, s2, s3, s4 = st.columns(4)
-    with s1:
-        st.markdown(f'<div class="stat-box"><div class="stat-label">Total rows</div><div class="stat-val">{len(df):,}</div></div>', unsafe_allow_html=True)
-    with s2:
-        st.markdown(f'<div class="stat-box"><div class="stat-label">Gross</div><div class="stat-val">${gross:,.2f}</div></div>', unsafe_allow_html=True)
-    with s3:
-        st.markdown(f'<div class="stat-box"><div class="stat-label">Chargebacks</div><div class="stat-val">${abs(chargeback_amt):,.2f}</div></div>', unsafe_allow_html=True)
-    with s4:
-        st.markdown(f'<div class="stat-box"><div class="stat-label">Net total</div><div class="stat-val">${net:,.2f}</div></div>', unsafe_allow_html=True)
+    # ── Save to disk ──────────────────────────────────────────────────────────
+    short_date = rd.strftime("%m-%d-%y")
+    filename   = f"{company}_{network.replace(' ', '')}_{short_date}.csv"
+    token      = uuid.uuid4().hex
+    folder     = os.path.join(STORE_DIR, token)
+    os.makedirs(folder, exist_ok=True)
+    df.to_csv(os.path.join(folder, filename), index=False)
+    _cleanup_old()
 
-    st.markdown("#### Preview — first 8 rows")
-    st.dataframe(df.head(8), use_container_width=True, hide_index=True)
+    return jsonify({
+        "total_rows":     total_rows,
+        "gross":          gross,
+        "chargeback_amt": abs(chargeback_amt),
+        "net":            net,
+        "download_url":   f"/download/{token}",
+        "filename":       filename,
+        "preview":        df.head(8).to_dict(orient="records"),
+    })
 
-# ── Download button — always shown if CSV is cached ──────────────────────────
-if "csv_out" in st.session_state:
-    st.download_button(
-        label="Download CSV",
-        data=st.session_state["csv_out"],
-        file_name=st.session_state["csv_filename"],
-        mime="text/csv",
-        type="primary",
-        use_container_width=False,
+
+@app.route("/download/<token>")
+def download(token):
+    folder = os.path.join(STORE_DIR, os.path.basename(token))
+    if not os.path.isdir(folder):
+        abort(404)
+    csvs = [f for f in os.listdir(folder) if f.lower().endswith(".csv")]
+    if not csvs:
+        abort(404)
+    return send_file(
+        os.path.join(folder, csvs[0]),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name=csvs[0],
     )
 
-elif files and (not company or not network or not remit_date):
-    st.warning("Please select Company, Network, and Remittance Date before uploading.")
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)

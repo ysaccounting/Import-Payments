@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSV Import to TicketVault</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #f5f4f0;
+    min-height: 100vh;
+    padding: 48px 24px 80px;
+    color: #1a1a18;
+  }
+
+  .container { max-width: 680px; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: #888780;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 32px;
+  }
+
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e8e6e0;
+    padding: 28px;
+    margin-bottom: 16px;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .form-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  @media (max-width: 540px) {
+    .form-grid, .form-grid-2 { grid-template-columns: 1fr 1fr; }
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: #888780;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+
+  select, input[type="date"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #e8e6e0;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: #1a1a18;
+    background: #fafaf8;
+    outline: none;
+    appearance: auto;
+  }
+  select:focus, input[type="date"]:focus { border-color: #1a1a18; }
+
+  /* TE date range */
+  #te-dates {
+    display: none;
+    background: #f5f4f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  #te-dates .te-label {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 1.5px dashed #d0cec8;
+    border-radius: 10px;
+    background: #fafaf8;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+    margin-bottom: 6px;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: #1a1a18; background: #f0efe9; }
+  .drop-zone.has-file { border-color: #3b6d11; background: #f2f8ea; }
+  .drop-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 22px; margin-bottom: 6px; color: #aaa; }
+  .drop-zone.has-file .drop-icon { color: #3b6d11; }
+  .drop-text { font-size: 14px; color: #555; margin-bottom: 3px; }
+  .drop-zone.has-file .drop-text { color: #3b6d11; }
+  .drop-sub { font-size: 11px; color: #aaa; font-family: 'DM Mono', monospace; }
+
+  .hint { font-size: 12px; color: #888780; font-style: italic; margin-bottom: 12px; }
+
+  /* Buttons */
+  .actions { display: flex; gap: 12px; margin-top: 20px; align-items: center; }
+
+  button {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 22px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s, transform 0.1s;
+  }
+  button:active { transform: scale(0.98); }
+
+  #process-btn {
+    background: #1a1a18;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #process-btn:hover:not(:disabled) { background: #333; }
+  #process-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+  #clear-btn {
+    background: #e0e0e0;
+    color: #222;
+    border: 1px solid #bbb;
+  }
+  #clear-btn:hover { background: #c8c8c8; }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Status messages */
+  .status {
+    display: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-top: 16px;
+  }
+  .status.ok   { background: #eaf3de; color: #3b6d11; border: 1px solid #c0dd97; }
+  .status.err  { background: #fcebeb; color: #a32d2d; border: 1px solid #f7c1c1; }
+  .status.warn { background: #fef9ec; color: #92610a; border: 1px solid #f5d97a; }
+
+  /* Results */
+  #results { display: none; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat {
+    background: #f5f4f0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: #888780;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .stat-val { font-size: 20px; font-weight: 500; }
+
+  /* Preview table */
+  .preview-wrap { overflow-x: auto; border: 1px solid #e8e6e0; border-radius: 8px; margin-bottom: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead tr { background: #f5f4f0; }
+  th {
+    text-align: left; padding: 10px 14px;
+    font-size: 10px; font-weight: 500; color: #888780;
+    letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+  }
+  td { padding: 9px 14px; border-top: 1px solid #e8e6e0; white-space: nowrap; }
+  td.neg { color: #a32d2d; }
+
+  /* Download button */
+  .btn-download {
+    display: inline-block;
+    background: #1a1a18;
+    color: #fff;
+    padding: 10px 22px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+  .btn-download:hover { background: #333; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="eyebrow">Remittance converter</div>
+  <h1>CSV Import to TicketVault</h1>
+
+  <div class="card">
+    <div class="form-grid">
+      <div>
+        <label for="company">Company</label>
+        <select id="company">
+          <option value="">Select...</option>
+          <option value="YS">YS</option>
+          <option value="YS2">YS2</option>
+          <option value="TV">TV</option>
+        </select>
+      </div>
+      <div>
+        <label for="network">Network</label>
+        <select id="network">
+          <option value="">Select...</option>
+          <option value="Gametime">Gametime</option>
+          <option value="GoTickets">GoTickets</option>
+          <option value="Mercury">Mercury</option>
+          <option value="SeatGeek">SeatGeek</option>
+          <option value="StubHub">StubHub</option>
+          <option value="Ticket Evolution">Ticket Evolution</option>
+          <option value="TicketNetwork">TicketNetwork</option>
+          <option value="TicketsNow">TicketsNow</option>
+          <option value="TicketsNow (CAD)">TicketsNow (CAD)</option>
+          <option value="TickPick">TickPick</option>
+          <option value="Vivid Seats">Vivid Seats</option>
+          <option value="Vivid Seats (CAD)">Vivid Seats (CAD)</option>
+        </select>
+      </div>
+      <div>
+        <label for="remit-date">Remittance date</label>
+        <input type="date" id="remit-date" />
+      </div>
+    </div>
+
+    <!-- Ticket Evolution date range -->
+    <div id="te-dates">
+      <div class="te-label">Transaction date range — only transactions within this range will be included.</div>
+      <div class="form-grid-2">
+        <div>
+          <label for="te-start">Start date</label>
+          <input type="date" id="te-start" />
+        </div>
+        <div>
+          <label for="te-end">End date</label>
+          <input type="date" id="te-end" />
+        </div>
+      </div>
+    </div>
+
+    <label>Upload file</label>
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".csv,.xlsx,.xls" multiple />
+      <div class="drop-icon" id="drop-icon">↑</div>
+      <div class="drop-text" id="drop-text"><strong>Click to upload</strong> or drag &amp; drop</div>
+      <div class="drop-sub" id="drop-sub">.csv and .xlsx files</div>
+    </div>
+    <div class="hint" id="multi-hint"></div>
+
+    <div class="status" id="status"></div>
+
+    <div class="actions">
+      <button id="process-btn" disabled>
+        <span id="btn-label">Convert</span>
+        <div class="spinner" id="spinner"></div>
+      </button>
+      <button id="clear-btn">Clear / Reset</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="card">
+      <div class="stats" id="stats"></div>
+      <div class="preview-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>order#</th>
+              <th>amount</th>
+              <th>remittancedate</th>
+              <th>chargebackreason</th>
+            </tr>
+          </thead>
+          <tbody id="preview-body"></tbody>
+        </table>
+      </div>
+      <a id="download-btn" class="btn-download" href="#" style="display:none;">Download CSV</a>
+    </div>
+  </div>
+
+</div>
+<script>
+  let selectedFiles = [];
+
+  const companyEl   = document.getElementById('company');
+  const networkEl   = document.getElementById('network');
+  const remitEl     = document.getElementById('remit-date');
+  const teStart     = document.getElementById('te-start');
+  const teEnd       = document.getElementById('te-end');
+  const teDates     = document.getElementById('te-dates');
+  const dropZone    = document.getElementById('drop-zone');
+  const fileInput   = document.getElementById('file-input');
+  const dropIcon    = document.getElementById('drop-icon');
+  const dropText    = document.getElementById('drop-text');
+  const dropSub     = document.getElementById('drop-sub');
+  const multiHint   = document.getElementById('multi-hint');
+  const statusEl    = document.getElementById('status');
+  const processBtn  = document.getElementById('process-btn');
+  const btnLabel    = document.getElementById('btn-label');
+  const spinner     = document.getElementById('spinner');
+  const resultsDiv  = document.getElementById('results');
+  const statsEl     = document.getElementById('stats');
+  const previewBody = document.getElementById('preview-body');
+  const downloadBtn = document.getElementById('download-btn');
+
+  const MULTI_NETWORKS = ['StubHub', 'TicketsNow', 'TicketsNow (CAD)', 'TicketNetwork', 'Mercury'];
+
+  function updateNetworkUI() {
+    const net = networkEl.value;
+    teDates.style.display = net === 'Ticket Evolution' ? 'block' : 'none';
+    if (MULTI_NETWORKS.includes(net)) {
+      const hints = {
+        'StubHub': 'StubHub: drop multiple files and they\'ll be combined automatically.',
+        'TicketsNow': 'TicketsNow: drop multiple files and they\'ll be combined automatically.',
+        'TicketsNow (CAD)': 'TicketsNow: drop multiple files and they\'ll be combined automatically.',
+        'TicketNetwork': 'TicketNetwork: drop the Details file and the Adjustments file together.',
+        'Mercury': 'Mercury: drop the Details file and the Adjustments file together.',
+      };
+      multiHint.textContent = hints[net] || '';
+    } else {
+      multiHint.textContent = '';
+    }
+    checkReady();
+  }
+
+  function checkReady() {
+    const net = networkEl.value;
+    const teOk = net !== 'Ticket Evolution' || (teStart.value && teEnd.value);
+    processBtn.disabled = !(companyEl.value && net && remitEl.value && selectedFiles.length > 0 && teOk);
+  }
+
+  function setFiles(files) {
+    selectedFiles = Array.from(files);
+    if (selectedFiles.length > 0) {
+      dropZone.classList.add('has-file');
+      dropIcon.textContent = '✓';
+      dropText.innerHTML = `<strong>${selectedFiles.length === 1 ? selectedFiles[0].name : selectedFiles.length + ' files selected'}</strong>`;
+      dropSub.textContent = selectedFiles.length + ' file(s) ready';
+    } else {
+      dropZone.classList.remove('has-file');
+      dropIcon.textContent = '↑';
+      dropText.innerHTML = '<strong>Click to upload</strong> or drag &amp; drop';
+      dropSub.textContent = '.csv and .xlsx files';
+    }
+    checkReady();
+  }
+
+  function showStatus(msg, type) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status ' + type;
+    statusEl.style.display = 'block';
+  }
+
+  function fmt(n) { return '$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+  function reset() {
+    companyEl.value = '';
+    networkEl.value = '';
+    remitEl.value = '';
+    teStart.value = '';
+    teEnd.value = '';
+    teDates.style.display = 'none';
+    multiHint.textContent = '';
+    setFiles([]);
+    fileInput.value = '';
+    statusEl.style.display = 'none';
+    resultsDiv.style.display = 'none';
+    downloadBtn.style.display = 'none';
+    downloadBtn.href = '#';
+    checkReady();
+  }
+
+  // Events
+  networkEl.addEventListener('change', updateNetworkUI);
+  companyEl.addEventListener('change', checkReady);
+  remitEl.addEventListener('change', checkReady);
+  teStart.addEventListener('change', checkReady);
+  teEnd.addEventListener('change', checkReady);
+
+  fileInput.addEventListener('change', e => setFiles(e.target.files));
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    setFiles(e.dataTransfer.files);
+  });
+
+  document.getElementById('clear-btn').addEventListener('click', reset);
+
+  processBtn.addEventListener('click', async () => {
+    if (!selectedFiles.length) return;
+
+    processBtn.disabled = true;
+    btnLabel.textContent = 'Converting…';
+    spinner.style.display = 'block';
+    statusEl.style.display = 'none';
+    resultsDiv.style.display = 'none';
+
+    const fd = new FormData();
+    fd.append('company',    companyEl.value);
+    fd.append('network',    networkEl.value);
+    fd.append('remit_date', remitEl.value);
+    if (teStart.value) fd.append('date_start', teStart.value);
+    if (teEnd.value)   fd.append('date_end',   teEnd.value);
+    selectedFiles.forEach(f => fd.append('files', f));
+
+    try {
+      const resp = await fetch('/process', { method: 'POST', body: fd });
+      const d = await resp.json();
+
+      if (!resp.ok || d.error) {
+        showStatus(d.error || 'Processing failed.', 'err');
+      } else {
+        showStatus(`Parsed ${d.total_rows.toLocaleString()} rows successfully.`, 'ok');
+
+        // Stats
+        statsEl.innerHTML = [
+          { label: 'Total rows',  val: d.total_rows.toLocaleString() },
+          { label: 'Gross',       val: fmt(d.gross) },
+          { label: 'Chargebacks', val: fmt(d.chargeback_amt) },
+          { label: 'Net total',   val: fmt(d.net) },
+        ].map(s => `<div class="stat"><div class="stat-label">${s.label}</div><div class="stat-val">${s.val}</div></div>`).join('');
+
+        // Preview
+        previewBody.innerHTML = '';
+        d.preview.forEach(r => {
+          const tr = document.createElement('tr');
+          const neg = parseFloat(r.amount) < 0;
+          tr.innerHTML = `
+            <td>${r['order#']}</td>
+            <td class="${neg ? 'neg' : ''}">${parseFloat(r.amount).toFixed(2)}</td>
+            <td>${r.remittancedate}</td>
+            <td>${r.chargebackreason || ''}</td>`;
+          previewBody.appendChild(tr);
+        });
+        if (d.total_rows > 8) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td colspan="4" style="color:#888780;font-style:italic;padding:8px 14px;">… and ${(d.total_rows - 8).toLocaleString()} more rows</td>`;
+          previewBody.appendChild(tr);
+        }
+
+        // Download
+        downloadBtn.href = d.download_url;
+        downloadBtn.download = d.filename;
+        downloadBtn.textContent = `Download CSV`;
+        downloadBtn.style.display = 'inline-block';
+        resultsDiv.style.display = 'block';
+      }
+    } catch (err) {
+      showStatus('Network error: ' + err.message, 'err');
+    } finally {
+      processBtn.disabled = false;
+      btnLabel.textContent = 'Convert';
+      spinner.style.display = 'none';
+      checkReady();
+    }
+  });
+</script>
+</body>
+</html>

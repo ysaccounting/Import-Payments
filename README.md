@@ -10,27 +10,21 @@ Gametime, GoTickets, Mercury, SeatGeek, StubHub, Ticket Evolution, TicketNetwork
 
 ## Project structure
 ```
-app.py            ← Main app
+app.py            ← Flask backend
+index.html        ← Frontend UI
 parsers.py        ← All network file parsers
-requirements.txt  ← Dependencies
+requirements.txt  ← Dependencies (Flask, pandas, gunicorn)
+railway.json      ← Railway deployment config
 ```
 
-## Setup
-
-### 1. Clone & install
+## Run locally
 ```bash
-git clone https://github.com/YOUR_USERNAME/csv-import-to-tv.git
-cd csv-import-to-tv
 pip install -r requirements.txt
+python app.py     # http://localhost:5000
 ```
 
-### 2. Run locally
-```bash
-python -m streamlit run app.py
-```
-
-### 3. Deploy to Railway
+## Deploy to Railway
 1. Push repo to GitHub
-2. Create new project on Railway
-3. Connect your GitHub repo
-4. Set start command to: `python -m streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
+2. Railway → New Project → Deploy from GitHub repo
+3. Railway auto-detects Python via Nixpacks and uses `railway.json` for the start command
+4. No environment variables needed — `$PORT` is provided automatically
