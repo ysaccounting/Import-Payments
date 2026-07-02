@@ -262,7 +262,7 @@ def parse_ticketnetwork(file) -> pd.DataFrame:
             if not cols:
                 continue
             order  = (cols[order_col] if order_col < len(cols) else "").strip()
-            amt    = -abs(_clean_amount(cols[amt_col] if amt_col < len(cols) else ""))
+            amt    = -(_clean_amount(cols[amt_col] if amt_col < len(cols) else ""))
             reason = (cols[reason_col] if reason_col != -1 and reason_col < len(cols) else "").strip()
             if not order:
                 continue
