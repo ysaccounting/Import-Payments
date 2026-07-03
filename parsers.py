@@ -319,6 +319,30 @@ def parse_mercury(file) -> pd.DataFrame:
         return None
     return pd.DataFrame(rows_out).reset_index(drop=True)
 
+# ── Grouping helper ──────────────────────────────────────────────────────────
+def _group_by_sign(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Group rows with the same order# separately by sign:
+    - positives with same order# are summed into one row
+    - negatives with same order# are summed into one row
+    - never mix positives and negatives together
+    """
+    if df is None or df.empty:
+        return df
+
+    df = df.copy()
+    df["_sign"] = df["amount"].apply(lambda x: "pos" if x >= 0 else "neg")
+
+    grouped = (
+        df.groupby(["order#", "_sign", "chargebackreason"], sort=False)
+        .agg(amount=("amount", "sum"))
+        .reset_index()
+    )
+    grouped["amount"] = grouped["amount"].round(2)
+    grouped = grouped[["order#", "amount", "chargebackreason"]]
+    return grouped.reset_index(drop=True)
+
+
 # ── Router ────────────────────────────────────────────────────────────────────
 def parse_file(file, network: str, **kwargs) -> pd.DataFrame:
     parsers = {
@@ -338,4 +362,5 @@ def parse_file(file, network: str, **kwargs) -> pd.DataFrame:
     parser = parsers.get(network)
     if parser is None:
         return None
-    return parser(file, **kwargs)
+    result = parser(file, **kwargs)
+    return _group_by_sign(result)
