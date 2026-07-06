@@ -183,8 +183,10 @@ def parse_ticket_evolution(file, date_start=None, date_end=None) -> pd.DataFrame
         df = pd.read_csv(io.StringIO(csv_str))
         df.columns = [c.strip().strip('"') for c in df.columns]
 
-    # Skip withdrawals
+    # Skip withdrawals and canceled transactions
     df = df[df["Type"].astype(str).str.strip().str.lower() != "withdrawal"].copy()
+    if "State" in df.columns:
+        df = df[df["State"].astype(str).str.strip().str.lower() != "canceled"].copy()
 
     # Filter by date range if provided
     if date_start or date_end:
