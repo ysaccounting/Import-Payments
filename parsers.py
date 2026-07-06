@@ -156,7 +156,8 @@ def parse_stubhub(file) -> pd.DataFrame:
 
     if not rows_out:
         return None
-    return pd.DataFrame(rows_out).reset_index(drop=True)
+    df = pd.DataFrame(rows_out).reset_index(drop=True)
+    return _group_by_sign(df)
 
 
 # ── Ticket Evolution ──────────────────────────────────────────────────────────
@@ -363,4 +364,7 @@ def parse_file(file, network: str, **kwargs) -> pd.DataFrame:
     if parser is None:
         return None
     result = parser(file, **kwargs)
+    # StubHub groups per-file inside its own parser; all others group here
+    if network == "StubHub":
+        return result
     return _group_by_sign(result)
