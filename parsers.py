@@ -322,6 +322,34 @@ def parse_mercury(file) -> pd.DataFrame:
         return None
     return pd.DataFrame(rows_out).reset_index(drop=True)
 
+# ── StubHub $0 (xlsx) ────────────────────────────────────────────────────────
+def parse_stubhub_zero(file) -> pd.DataFrame:
+    raw = _read(file)
+    df = pd.read_excel(io.BytesIO(raw), header=None)
+
+    # Row pattern: row 0 = header, then alternating event label / data rows
+    # Data rows have a numeric Payment ID in col 0
+    rows_out = []
+    for i, row in df.iterrows():
+        if i == 0:
+            continue  # skip header
+        order_id = row.iloc[1]
+        payment  = row.iloc[3]
+        # Data rows have a numeric Order ID
+        try:
+            order = str(int(order_id))
+        except (ValueError, TypeError):
+            continue  # event label row — skip
+        try:
+            amt = float(payment)
+        except (ValueError, TypeError):
+            continue
+        rows_out.append({"order#": order, "amount": round(amt, 2), "chargebackreason": ""})
+
+    if not rows_out:
+        return None
+    return pd.DataFrame(rows_out).reset_index(drop=True)
+
 # ── Grouping helper ──────────────────────────────────────────────────────────
 def _group_by_sign(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -361,6 +389,7 @@ def parse_file(file, network: str, **kwargs) -> pd.DataFrame:
         "Ticket Evolution": parse_ticket_evolution,
         "TicketNetwork":    parse_ticketnetwork,
         "Mercury":          parse_mercury,
+        "StubHub ($0)":     parse_stubhub_zero,
     }
     parser = parsers.get(network)
     if parser is None:
