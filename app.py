@@ -88,7 +88,7 @@ def process():
     total_rows     = len(df)
 
     short_date = rd.strftime("%m-%d-%y")
-    filename   = f"{company}_{network.replace(' ', '').replace('(', '').replace(')', '')}_{short_date}.csv"
+    filename   = f"{company}_{network.replace(' ', '')}_{short_date}.csv"
     token      = uuid.uuid4().hex
     folder     = os.path.join(STORE_DIR, token)
     os.makedirs(folder, exist_ok=True)
