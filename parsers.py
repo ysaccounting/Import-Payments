@@ -85,17 +85,59 @@ def parse_ticketsnow(file) -> pd.DataFrame:
     return out.dropna(subset=["order#"]).reset_index(drop=True)
 
 
-# ── TickPick (xlsx) ───────────────────────────────────────────────────────────
+# ── TickPick (xlsx or csv) ────────────────────────────────────────────────────
 def parse_tickpick(file) -> pd.DataFrame:
-    df = pd.read_excel(io.BytesIO(_read(file)))
-    df.columns = [c.strip() for c in df.columns]
-    out = pd.DataFrame()
-    out["order#"] = df["Order Number"].astype(str).str.strip().apply(
-        lambda x: "DueFromTickPick" if x in ("", "nan") else x
-    )
-    out["amount"]           = df["Amount"].apply(_clean_amount)
-    out["chargebackreason"] = ""
-    return out[out["amount"] != 0].reset_index(drop=True)
+    raw = _read(file)
+    # Try xlsx first
+    try:
+        df = pd.read_excel(io.BytesIO(raw))
+        df.columns = [c.strip() for c in df.columns]
+        out = pd.DataFrame()
+        out["order#"] = df["Order Number"].astype(str).str.strip().apply(
+            lambda x: "DueFromTickPick" if x in ("", "nan") else x
+        )
+        out["amount"]           = df["Amount"].apply(_clean_amount)
+        out["chargebackreason"] = ""
+        return out[out["amount"] != 0].reset_index(drop=True)
+    except Exception:
+        pass
+
+    # CSV format — two row types:
+    # Normal sales: Order Number, Sale Date, Event Name, Event Date, Event Time, Quantity, Payout
+    # Refunds/Adjustments: Order Number, Type, --, Amount  (only 4 cols)
+    import csv as _csv
+    text = raw.decode("utf-8", errors="replace")
+    rows_out = []
+    lines = [l for l in text.splitlines() if l.strip()]
+    reader = _csv.reader(lines)
+    headers = [h.strip() for h in next(reader)]  # skip header row
+
+    for cols in reader:
+        if not cols:
+            continue
+        order = cols[0].strip()
+        if not order or not order[0].isdigit():
+            continue  # skip summary/total rows
+
+        if len(cols) >= 7:
+            # Normal sale row — Payout is last column
+            amt_raw = cols[6].strip()
+        elif len(cols) >= 4:
+            # Refund/Adjustment row — Amount is 4th column
+            amt_raw = cols[3].strip()
+        else:
+            continue
+
+        amt = _clean_amount(amt_raw)
+        if amt == 0:
+            continue
+
+        order_id = order if order not in ("", "nan") else "DueFromTickPick"
+        rows_out.append({"order#": order_id, "amount": amt, "chargebackreason": ""})
+
+    if not rows_out:
+        return None
+    return pd.DataFrame(rows_out).reset_index(drop=True)
 
 
 # ── StubHub / Viagogo ─────────────────────────────────────────────────────────
